@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Assignment 1: Tessellation</title>
+<meta http-equiv="content-type" content="text/html; charset=utf8">
+<script type="text/javascript" src="../lib/glhelper.js"></script>
+<script type="text/javascript" src="../lib/gl-matrix.js"></script>
+<script type="text/javascript" src="../lib/webgl-debug.js"></script>
+
+<script type="x-shader/x-vertex" id="vertexShader">
+attribute vec2 aPos;
+uniform float uTwistAmount;
+
+vec2 rotate2D(vec2 v, float angle) {
+	float sinA = sin(angle);
+	float cosA = cos(angle);
+	return vec2(v.x * cosA - v.y * sinA, v.y * cosA + v.x * sinA);
+}
+
+void main() {
+    float distance = length(aPos);
+    gl_Position = vec4(rotate2D(aPos, distance * uTwistAmount), 0.0, 1.0);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentShader">
+precision mediump float;
+
+void main() {
+    gl_FragColor = vec4(0.0, 1.0, 1.0, 1.0);
+}
+</script>
+
+<script type="text/javascript">
+function getUrlParams() {
+  var raw = window.location.search.substring(1).split("&");
+  var processed = {};
+  for (var i = 0; i < raw.length; i++) {
+    var name = raw[i].substring(0, raw[i].indexOf("="));
+    var arg = raw[i].substring(raw[i].indexOf("=") + 1);
+    if (name) processed[name.toLowerCase()] = arg;
+  }
+  return processed;
+}
+
+var glh, vertexBuffer;
+var useWireframe = false;
+function init() {
+    glh = new GlHelper(document.getElementById("canvas"));
+    vertexShader = glh.loadShaderDOM("vertexShader");
+    fragmentShader = glh.loadShaderDOM("fragmentShader");
+    shaderProgram = glh.linkShaderProgram(vertexShader, fragmentShader);
+    glh.readUniforms(shaderProgram, ["uTwistAmount"]);
+    glh.readVertexAttribs(shaderProgram, ["aPos"]);
+    vertexBuffer = glh.createBuffer(new Float32Array([0, 1, -Math.sqrt(3)/2, -0.5, Math.sqrt(3)/2, -0.5]), 8);
+
+    this.glh.gl.clearColor(0,0,0,1.0);
+    this.glh.enableVertexAttribArray(shaderProgram);
+    onSubdivisionChange();
+    onWireframeChange();
+
+    renderLoop();
+}
+
+function render() {
+    glh.gl.clear(glh.gl.COLOR_BUFFER_BIT);
+    glh.gl.useProgram(shaderProgram);
+
+
+
+    glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
+    glh.gl.uniform1f(shaderProgram.uniforms.uTwistAmount, Math.sin((new Date()).getTime() / 1000) * Math.PI / 3);
+    if (useWireframe) {
+        glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, wireframeBuffer);
+        glh.gl.drawArrays(glh.gl.LINES, 0, wireframeBuffer.numItems / 8);
+    }
+    else {
+        glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
+        glh.gl.drawArrays(glh.gl.TRIANGLES, 0, vertexBuffer.numItems / 8);
+    }
+}
+
+function renderLoop() {
+    render();
+    requestAnimationFrame(renderLoop);
+}
+
+function tessellateTriangles(inArray, dim, iterations) {
+    if (iterations == 0) return new Float32Array(inArray);
+    function avg(a,b) {return (a + b) / 2.0;}
+    var triangleSize = 3 * dim;
+    var numTriangles = parseInt(inArray.length / triangleSize);
+    var outArrayLength = triangleSize * numTriangles;
+    for (var i = 0; i < iterations; i++) outArrayLength *= 4;
+    var outArray = new Float32Array(outArrayLength);
+    for (var i = 0; i < iterations; i++) {
+        for (var t = numTriangles - 1; t >= 0; t--) {
+            var a = t * triangleSize;
+            var b = a + dim;
+            var c = b + dim;
+            var o = 4*a;
+            for (var d = 0; d < dim; d++) {
+                outArray[o +11*dim + d] = avg(inArray[b+d], inArray[c+d]);
+                outArray[o +10*dim + d] = avg(inArray[a+d], inArray[b+d]);
+                outArray[o + 9*dim + d] = avg(inArray[a+d], inArray[c+d]);
+                outArray[o + 8*dim + d] = inArray[c+d];
+                outArray[o + 7*dim + d] = avg(inArray[b+d], inArray[c+d]);
+                outArray[o + 6*dim + d] = avg(inArray[a+d], inArray[c+d]);
+                outArray[o + 5*dim + d] = avg(inArray[b+d], inArray[c+d]);
+                outArray[o + 4*dim + d] = inArray[b+d];
+                outArray[o + 3*dim + d] = avg(inArray[a+d], inArray[b+d]);
+                outArray[o + 2*dim + d] = avg(inArray[a+d], inArray[c+d]);
+                outArray[o + 1*dim + d] = avg(inArray[a+d], inArray[b+d]);
+                outArray[o + 0*dim + d] = inArray[a+d];
+            }
+        }
+        numTriangles *= 4;
+        inArray = outArray;
+    }
+    return outArray;
+}
+
+function trianglesToWireframe(inArray, dim) {
+    var triangleSize = 3 * dim;
+    var numTriangles = parseInt(inArray.length / triangleSize);
+    var outArrayLength = triangleSize * numTriangles * 2;
+    var outArray = new Float32Array(outArrayLength);
+    for (var t = 0; t < numTriangles; t++) {
+        var a = t * triangleSize;
+        var b = a + dim;
+        var c = b + dim;
+        var o = 2*a;
+        for (var d = 0; d < dim; d++) {
+            outArray[o + 0*dim + d] = inArray[a+d];
+            outArray[o + 1*dim + d] = inArray[b+d];
+            outArray[o + 2*dim + d] = inArray[b+d];
+            outArray[o + 3*dim + d] = inArray[c+d];
+            outArray[o + 4*dim + d] = inArray[c+d];
+            outArray[o + 5*dim + d] = inArray[a+d];
+        }
+    }
+    return outArray;
+}
+
+function generateBuffers(subdivisionLevel) {
+    var triangle = new Float32Array([-Math.sqrt(3)/2, -0.5, Math.sqrt(3)/2, -0.5, 0, 1]);
+    var tessellated = tessellateTriangles(triangle, 2, subdivisionLevel);
+    wireframe = trianglesToWireframe(tessellated, 2);
+    vertexBuffer = glh.createBuffer(tessellated, 8);
+    wireframeBuffer = glh.createBuffer(wireframe, 8);
+}
+
+function onSubdivisionChange() {
+    inputElement = document.getElementById("subdivision_input");
+    document.getElementById('subdivision_display').textContent = inputElement.value;
+    if (vertexBuffer) glh.gl.deleteBuffer(vertexBuffer);
+    generateBuffers(parseInt(inputElement.value));
+}
+
+function onWireframeChange() {
+    inputElement = document.getElementById("wireframe_input");
+    if (inputElement.checked) useWireframe = true;
+    else useWireframe = false;
+}
+</script>
+
+
+</head>
+
+
+<body onload="init();">
+    <div>
+        Amar Shah<br>
+        Interactive Computer Graphics with WebGL<br>
+        Assignment 1<br>
+        Tesselation<br>
+    </div>
+    <canvas id="canvas" style="border: none;" width="512" height="512"></canvas><br>
+    Subdivisions: <input id="subdivision_input" type="range" min="0" max="10" value="3" steps="1" onchange="onSubdivisionChange()"></input><span id="subdivision_display"></span><br>
+    <input id="wireframe_input" type="checkbox" name="wireframe" defaultChecked="true" onchange="onWireframeChange()">Wireframe</input>
+</body></html>
