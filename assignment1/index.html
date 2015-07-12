@@ -45,6 +45,8 @@ function getUrlParams() {
 
 var glh, vertexBuffer;
 var useWireframe = false;
+var maxAngle = 180;
+var animate = true;
 function init() {
     glh = new GlHelper(document.getElementById("canvas"));
     vertexShader = glh.loadShaderDOM("vertexShader");
@@ -69,7 +71,7 @@ function render() {
 
 
     glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
-    glh.gl.uniform1f(shaderProgram.uniforms.uTwistAmount, Math.sin((new Date()).getTime() / 1000) * Math.PI / 3);
+    glh.gl.uniform1f(shaderProgram.uniforms.uTwistAmount, maxAngle * Math.PI / 180 * (animate ? Math.sin((new Date()).getTime() / 1000) : 1));
     if (useWireframe) {
         glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, wireframeBuffer);
         glh.gl.drawArrays(glh.gl.LINES, 0, wireframeBuffer.numItems / 8);
@@ -157,10 +159,22 @@ function onSubdivisionChange() {
     generateBuffers(parseInt(inputElement.value));
 }
 
+function onMaxRotationChange() {
+	inputElement = document.getElementById("max_rotation_input");
+	maxAngle = parseFloat(inputElement.value);
+	console.log(inputElement.value, maxAngle);
+}
+
 function onWireframeChange() {
     inputElement = document.getElementById("wireframe_input");
     if (inputElement.checked) useWireframe = true;
     else useWireframe = false;
+}
+
+function onAnimationChange() {
+	inputElement = document.getElementById("animation_input");
+    if (inputElement.checked) animate = true;
+    else animate = false;
 }
 </script>
 
@@ -177,5 +191,7 @@ function onWireframeChange() {
     </div>
     <canvas id="canvas" style="border: none;" width="512" height="512"></canvas><br>
     Subdivisions: <input id="subdivision_input" type="range" min="0" max="10" value="3" steps="1" onchange="onSubdivisionChange()"></input><span id="subdivision_display"></span><br>
-    <input id="wireframe_input" type="checkbox" name="wireframe" defaultChecked="true" onchange="onWireframeChange()">Wireframe</input>
+	Maximum rotation of tips: <input id="max_rotation_input" type="number" step="15" value="180" onchange="onMaxRotationChange()" style="width:3em"> degrees</input><br>
+	<input id="animation_input" type="checkbox" name="animation"  checked onchange="onAnimationChange()">Animate</input><br>
+    <input id="wireframe_input" type="checkbox" name="wireframe" onchange="onWireframeChange()">Wireframe</input><br>
 </body></html>
