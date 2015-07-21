@@ -285,13 +285,13 @@ Pen.prototype.move = function(event) {
     this.pos = {x: event.clientX, y: event.clientY};
     this.vel = {x: this.pos.x - this.lastPos.x, y: this.pos.y - this.lastPos.y};
     var dt = (event.timeStamp - this.lastTime);
+    console.log("Pen " + this.id + ": dt = " + dt + "ms");
     if (isFirefox) dt /= 1000;
     this.lastTime = event.timeStamp;
     this.inkLevel = Math.min(this.inkLevel + 0.005 * dt, 1);
     this.inkLevel = this.inkLevel * Math.exp(-0.01 * Math.sqrt(this.vel.x * this.vel.x + this.vel.y * this.vel.y));
     this.leadIn = Math.min(this.leadIn + 0.01 * dt, 1);
     this.width = this.leadIn * this.inkLevel;
-    console.log("Pen " + this.id + ": dt = " + dt + "ms");
 }
 window.addEventListener("load", function() {
 	canvas = document.getElementById("canvas");
