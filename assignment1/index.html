@@ -3,6 +3,7 @@
 <head>
 <title>Assignment 1: Tessellation</title>
 <meta http-equiv="content-type" content="text/html; charset=utf8">
+<script type="text/javascript" src="../lib/requestanimationframe-polyfill.js"></script>
 <script type="text/javascript" src="../lib/glhelper.js"></script>
 <script type="text/javascript" src="../lib/gl-matrix.js"></script>
 <script type="text/javascript" src="../lib/webgl-debug.js"></script>
@@ -67,9 +68,6 @@ function init() {
 function render() {
     glh.gl.clear(glh.gl.COLOR_BUFFER_BIT);
     glh.gl.useProgram(shaderProgram);
-
-
-
     glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
     glh.gl.uniform1f(shaderProgram.uniforms.uTwistAmount, maxAngle * Math.PI / 180 * (animate ? Math.sin((new Date()).getTime() / 1000) : 1));
     if (useWireframe) {

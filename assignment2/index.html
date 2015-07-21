@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Assignment 2: Drawing</title>
+<meta http-equiv="content-type" content="text/html; charset=utf8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<script type="text/javascript" src="../lib/requestanimationframe-polyfill.js"></script>
+<script type="text/javascript" src="../lib/glhelper.js"></script>
+<script type="text/javascript" src="../lib/gl-matrix.js"></script>
+<script type="text/javascript" src="../lib/webgl-debug.js"></script>
+<script type="text/javascript" src="../lib/pep.js"></script>
+
+<script type="x-shader/x-vertex" id="vertexShader">
+attribute vec2 aPos;
+uniform vec2 uResolution;
+
+void main() {
+    gl_Position = vec4((2.0 * aPos / uResolution - 1.0), 0.0, 1.0);
+	//gl_Position = vec4(aPos + 0.000001 * uResolution, 0.0, 1.0);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentShader">
+precision mediump float;
+uniform vec4 uColor;
+
+void main() {
+    gl_FragColor = uColor;
+}
+</script>
+
+<script type="x-shader/x-vertex" id="vertexShaderFullscreen">
+attribute vec2 aPos;
+uniform vec2 uCorner0;
+uniform vec2 uCorner1;
+varying vec2 vTexCoord;
+
+void main() {
+    gl_Position = vec4(2.0 * aPos - 1.0, 0.0, 1.0);
+	gl_Position.y = -gl_Position.y;
+	vTexCoord = aPos * uCorner0;
+	//gl_Position = vec4(aPos + 0.000001 * uResolution, 0.0, 1.0);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="fragmentShaderFullscreen">
+precision mediump float;
+uniform sampler2D uTexture;
+varying vec2 vTexCoord;
+
+void main() {
+    gl_FragColor = vec4(0.0, 1.0, 0.0, 0.5);
+	gl_FragColor = texture2D(uTexture, vTexCoord);
+}
+</script>
+
+<script type="text/javascript">
+function getUrlParams() {
+  var raw = window.location.search.substring(1).split("&");
+  var processed = {};
+  for (var i = 0; i < raw.length; i++) {
+    var name = raw[i].substring(0, raw[i].indexOf("="));
+    var arg = raw[i].substring(raw[i].indexOf("=") + 1);
+    if (name) processed[name.toLowerCase()] = arg;
+  }
+  return processed;
+}
+
+var ua = window.navigator.userAgent.toLowerCase();
+var isFirefox = ((ua.indexOf("gecko") >= 0) && (ua.indexOf("trident") < 0) && (ua.indexOf("webkit") < 0))
+var glh, gl, vertexBuffer;
+var useWireframe = false;
+var maxAngle = 180;
+var animate = true;
+var canvas;
+var texture, framebuffer;
+var needsPresent = false;
+var screenSize = 1024;
+function init() {
+    glh = new GlHelper(document.getElementById("canvas"), {debug: true});
+	gl = glh.gl
+    vertexShader = glh.loadShaderDOM("vertexShader");
+	vertexShaderFullscreen = glh.loadShaderDOM("vertexShaderFullscreen")
+    fragmentShader = glh.loadShaderDOM("fragmentShader");
+    fragmentShaderFullscreen = glh.loadShaderDOM("fragmentShaderFullscreen");
+    shaderProgram = glh.linkShaderProgram(vertexShader, fragmentShader);
+	glh.readUniforms(shaderProgram, ["uResolution", "uColor"]);
+    glh.readVertexAttribs(shaderProgram, ["aPos"]);
+
+	shaderProgramFullscreen = glh.linkShaderProgram(vertexShaderFullscreen, fragmentShaderFullscreen);
+	glh.readUniforms(shaderProgramFullscreen, ["uCorner0", "uCorner1", "uTexture"]);
+    glh.readVertexAttribs(shaderProgramFullscreen, ["aPos"]);
+
+
+    glh.gl.clearColor(0,0,0,0.0);
+    glh.enableVertexAttribArray(shaderProgram);
+	glh.gl.clear(glh.gl.COLOR_BUFFER_BIT);
+
+	vertexBuffer = glh.createBuffer(new Float32Array([0,0,300,300]), 8);
+	fullscreenBuffer = glh.createBuffer(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 8)
+
+    texture = glh.gl.createTexture();
+    glh.gl.bindTexture(glh.gl.TEXTURE_2D, texture);
+    glh.gl.texParameteri(glh.gl.TEXTURE_2D, glh.gl.TEXTURE_MAG_FILTER, glh.gl.LINEAR);
+    glh.gl.texParameteri(glh.gl.TEXTURE_2D, glh.gl.TEXTURE_MIN_FILTER, glh.gl.LINEAR);
+    glh.gl.texParameteri(glh.gl.TEXTURE_2D, glh.gl.TEXTURE_WRAP_S, glh.gl.CLAMP_TO_EDGE);
+    glh.gl.texParameteri(glh.gl.TEXTURE_2D, glh.gl.TEXTURE_WRAP_T, glh.gl.CLAMP_TO_EDGE);
+	glh.gl.texImage2D(glh.gl.TEXTURE_2D, 0, glh.gl.RGBA, screenSize, screenSize, 0, glh.gl.RGBA, glh.gl.UNSIGNED_BYTE, null);
+
+	framebuffer = gl.createFramebuffer();
+	gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+	gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+	var valid = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    switch(valid) {
+        case gl.FRAMEBUFFER_UNSUPPORTED:
+            throw 'Framebuffer is unsupported';
+        case gl.FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+            throw 'Framebuffer incomplete attachment';
+        case gl.FRAMEBUFFER_INCOMPLETE_DIMENSIONS:
+            throw 'Framebuffer incomplete dimensions';
+        case gl.FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+            throw 'Framebuffer incomplete missing attachment';
+    }
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+function drawLine(mouse) {
+	if (!mouse.lastPos) return;
+	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+	gl.viewport(0, 0, screenSize, screenSize);
+	glh.gl.useProgram(shaderProgram);
+	glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
+	glh.gl.bufferSubData(glh.gl.ARRAY_BUFFER, 0, new Float32Array([mouse.lastPos.x, mouse.lastPos.y, mouse.pos.x, mouse.pos.y]));
+	glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
+	glh.gl.uniform2f(shaderProgram.uniforms.uResolution, screenSize, screenSize);
+	glh.gl.drawArrays(glh.gl.LINES, 0, vertexBuffer.numItems / 8);
+	needsPresent = true;
+}
+
+function rotate2D(coord, angle, target) {
+	var sinA = Math.sin(angle);
+	var cosA = Math.cos(angle);
+	if (target) {
+		target.x = coord.x * cosA - coord.y * sinA;
+		target.y = coord.y * cosA + coord.x * sinA;
+	}
+	else {
+		return {
+			x: coord.x * cosA - coord.y * sinA,
+			y: coord.y * cosA + coord.x * sinA,
+		}
+	}
+}
+
+function drawStroke(mouse) {
+	if (!mouse.lastPos || !mouse.vel) return;
+	mouse.lastVel = mouse.lastVel || mouse.vel;
+	var curveSubdivisions = 12;
+	vertices = new Float32Array(2 * (2 * (curveSubdivisions + 1)));
+	var rotated = {};
+	var mouseSpeed = Math.sqrt(mouse.vel.x * mouse.vel.x + mouse.vel.y * mouse.vel.y);
+	var lastMouseSpeed = Math.sqrt(mouse.lastVel.x * mouse.lastVel.x + mouse.lastVel.y * mouse.lastVel.y);
+	width1 = Math.min(20 / mouseSpeed, 5);
+	width2 = Math.min(20 / lastMouseSpeed, 5);
+	velocityNormalized = {x: mouse.vel.x / mouseSpeed, y: mouse.vel.y / mouseSpeed};
+	offset1 = {x: width1 * velocityNormalized.y, y : -width1 * velocityNormalized.x};
+	offset2 = {x: -width2 * velocityNormalized.y, y : width2 * velocityNormalized.x};
+	var j = 0;
+	for (var i = 0; i <= curveSubdivisions; i++) {
+		var theta = Math.PI * i / curveSubdivisions;
+		rotate2D(offset1, theta, rotated);
+		vertices[j] = mouse.pos.x + rotated.x; j++;
+		vertices[j] = mouse.pos.y + rotated.y; j++;
+	}
+	for (var i = 0; i <= curveSubdivisions; i++) {
+		var theta = Math.PI * i / curveSubdivisions;
+		rotate2D(offset2, theta, rotated);
+		vertices[j] = mouse.lastPos.x + rotated.x; j++;
+		vertices[j] = mouse.lastPos.y + rotated.y; j++;
+	}
+	//console.log(vertices);
+
+	//vertices = new Float32Array([0,0,300,0,300,300,0,300]);
+	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+	gl.viewport(0, 0, screenSize, screenSize);
+	glh.gl.useProgram(shaderProgram);
+	glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
+	glh.gl.bufferData(glh.gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+	glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
+	glh.gl.uniform2f(shaderProgram.uniforms.uResolution, screenSize, screenSize);
+	//glh.gl.uniform4f(shaderProgram.uniforms.uColor, Math.random(), Math.random(), Math.random(), 1.0);
+	glh.gl.uniform4f(shaderProgram.uniforms.uColor, 1,1,1, 1.0);
+	glh.gl.drawArrays(glh.gl.TRIANGLE_FAN, 0, vertices.length / 2);
+	needsPresent = true;
+}
+
+function drawPen(pen) {
+	if (!pen.lastPos || !pen.vel) return;
+	pen.lastVel = pen.lastVel || pen.vel;
+	var curveSubdivisions = 12;
+	vertices = new Float32Array(2 * (2 * (curveSubdivisions + 1)));
+	var rotated = {};
+	var penSpeed = Math.sqrt(pen.vel.x * pen.vel.x + pen.vel.y * pen.vel.y);
+	width1 = pen.width * (pen.maxRadius - pen.minRadius) + pen.minRadius;
+	width2 = pen.lastWidth * (pen.maxRadius - pen.minRadius) + pen.minRadius;
+	velocityNormalized = {x: pen.vel.x / penSpeed, y: pen.vel.y / penSpeed};
+	offset1 = {x: width1 * velocityNormalized.y, y : -width1 * velocityNormalized.x};
+	offset2 = {x: -width2 * velocityNormalized.y, y : width2 * velocityNormalized.x};
+	var j = 0;
+	for (var i = 0; i <= curveSubdivisions; i++) {
+		var theta = Math.PI * i / curveSubdivisions;
+		rotate2D(offset1, theta, rotated);
+		vertices[j] = pen.pos.x + rotated.x; j++;
+		vertices[j] = pen.pos.y + rotated.y; j++;
+	}
+	for (var i = 0; i <= curveSubdivisions; i++) {
+		var theta = Math.PI * i / curveSubdivisions;
+		rotate2D(offset2, theta, rotated);
+		vertices[j] = pen.lastPos.x + rotated.x; j++;
+		vertices[j] = pen.lastPos.y + rotated.y; j++;
+	}
+	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+	gl.viewport(0, 0, screenSize, screenSize);
+	glh.gl.useProgram(shaderProgram);
+	glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
+	glh.gl.bufferData(glh.gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+	glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
+	glh.gl.uniform2f(shaderProgram.uniforms.uResolution, screenSize, screenSize);
+	glh.gl.uniform4f(shaderProgram.uniforms.uColor, pen.color[0], pen.color[1], pen.color[2], pen.color[3], 1);
+    //glh.gl.uniform4f(shaderProgram.uniforms.uColor, Math.random(), Math.random(), Math.random(), 1.0);
+    glh.gl.drawArrays(glh.gl.TRIANGLE_FAN, 0, vertices.length / 2);
+	needsPresent = true;
+}
+
+function present() {
+	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+	gl.viewport(0, 0, canvas.width, canvas.height);
+	glh.gl.clear(glh.gl.COLOR_BUFFER_BIT)
+	glh.gl.useProgram(shaderProgramFullscreen);
+	glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, fullscreenBuffer);
+	glh.gl.vertexAttribPointer(shaderProgramFullscreen.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
+    glh.gl.uniform2f(shaderProgramFullscreen.uniforms.uCorner0, canvas.width / screenSize, canvas.height / screenSize);
+	glh.gl.uniform1i(shaderProgramFullscreen.samplerUniform, 0);
+	glh.gl.activeTexture(gl.TEXTURE0);
+	gl.bindTexture(gl.TEXTURE_2D, texture);
+	glh.gl.drawArrays(glh.gl.TRIANGLE_STRIP, 0, fullscreenBuffer.numItems / 8);
+
+}
+
+function renderLoop() {
+    if (needsPresent) {
+		present();
+		needsPresent = false;
+	}
+    window.requestAnimationFrame(renderLoop);
+}
+
+pens = [];
+var Pen = function(event) {
+    this.id = event.pointerId;
+	this.pos = {x: event.clientX, y: event.clientY};
+	this.vel = null;
+	this.lastPos = null;
+	this.width = 0;
+    this.lastWidth = null;
+    this.inkLevel = 1;
+    this.leadIn = 0;
+    this.lastTime = event.timeStamp;// || Date.now();
+	this.color = [0.5 * Math.random() + 0.5, 0.5 * Math.random() + 0.25, 0.5 * Math.random(), 1.0];
+	for (var i = 0; i < 10; i++) {
+		var i1 = parseInt(Math.random() * 3) % 3;
+		var i2 = parseInt(Math.random() * 3) % 3;
+		var temp = this.color[i2];
+		this.color[i2] = this.color[i1];
+		this.color[i1] = temp;
+	}
+    this.minRadius = 1;
+    this.maxRadius = 10;
+}
+Pen.prototype.move = function(event) {
+    this.lastPos = this.pos;
+    this.lastWidth = this.width;
+    this.pos = {x: event.clientX, y: event.clientY};
+    this.vel = {x: this.pos.x - this.lastPos.x, y: this.pos.y - this.lastPos.y};
+    var dt = (event.timeStamp - this.lastTime);
+    if (isFirefox) dt /= 1000;
+    this.lastTime = event.timeStamp;
+    this.inkLevel = Math.min(this.inkLevel + 0.005 * dt, 1);
+    this.inkLevel = this.inkLevel * Math.exp(-0.01 * Math.sqrt(this.vel.x * this.vel.x + this.vel.y * this.vel.y));
+    this.leadIn = Math.min(this.leadIn + 0.01 * dt, 1);
+    this.width = this.leadIn * this.inkLevel;
+    console.log("Pen " + this.id + ": dt = " + dt + "ms");
+}
+window.addEventListener("load", function() {
+	canvas = document.getElementById("canvas");
+    mouseDisplay = document.getElementById("mouseDisplay");
+	eventDisplay = document.getElementById("eventDisplay");
+    canvas.addEventListener('pointerdown', function(event) {
+		pens[event.pointerId] = new Pen(event);
+    });
+    canvas.addEventListener('pointerup', function(event) {
+        delete pens[event.pointerId];
+    });
+    canvas.addEventListener('pointercancel', function(event) {
+        delete pens[event.pointerId];
+    });
+    canvas.addEventListener('pointermove', function(event) {
+		var pen = pens[event.pointerId];
+		if (!pen) return;
+		/*pen.lastVel = pen.vel;
+		pen.lastPos = pen.pos;
+		pen.pos = {x: event.clientX, y: event.clientY};
+		pen.vel = {x: pen.pos.x - pen.lastPos.x, y: pen.pos.y - pen.lastPos.y};*/
+        pen.move(event);
+		drawPen(pen);
+    });
+	window.addEventListener('resize', function(event) {
+		canvas.width = window.innerWidth;
+		canvas.height = window.innerHeight;
+		present();
+	});
+	window.addEventListener('orientationchange', function(event) {
+		canvas.width = window.innerWidth;
+		canvas.height = window.innerHeight;
+		present();
+	});
+	//window.addEventListener('pointerdown', function(event) {console.log(event)});
+	canvas.width = window.innerWidth;
+	canvas.height = window.innerHeight;
+	screenSize = Math.max(screen.width, screen.height);
+	init();
+	renderLoop();
+
+});
+
+</script>
+
+
+</head>
+
+
+<body style="margin: 0; overflow:hidden; width: 100%; height: 100%; background-color: black">
+    <div style="position: absolute; color: white;">
+        Amar Shah<br>
+        Interactive Computer Graphics with WebGL<br>
+        Assignment 2<br>
+        Drawing<br>
+		<div id="mouseDisplay" style="display: none">Mouse: {}</div>
+		<div id="eventDisplay"></div>
+    </div>
+    <canvas touch-action="none" id="canvas" style="border: none;"></canvas><br>
+
+</body>
+</html>
