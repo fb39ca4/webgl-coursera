@@ -3,12 +3,13 @@
 <head>
 <title>Assignment 2: Drawing</title>
 <meta http-equiv="content-type" content="text/html; charset=utf8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no user-scroll=no">
 <script type="text/javascript" src="../lib/requestanimationframe-polyfill.js"></script>
 <script type="text/javascript" src="../lib/glhelper.js"></script>
 <script type="text/javascript" src="../lib/gl-matrix.js"></script>
 <script type="text/javascript" src="../lib/webgl-debug.js"></script>
 <script type="text/javascript" src="../lib/pep.js"></script>
+<script type="text/javascript" src="../lib/parsecsscolor.js"></script>
 
 <script type="x-shader/x-vertex" id="vertexShader">
 attribute vec2 aPos;
@@ -49,7 +50,6 @@ uniform sampler2D uTexture;
 varying vec2 vTexCoord;
 
 void main() {
-    gl_FragColor = vec4(0.0, 1.0, 0.0, 0.5);
 	gl_FragColor = texture2D(uTexture, vTexCoord);
 }
 </script>
@@ -75,10 +75,14 @@ var animate = true;
 var canvas;
 var texture, framebuffer;
 var needsPresent = false;
+var drawingSetup = false;
 var screenSize = 1024;
 function init() {
     glh = new GlHelper(document.getElementById("canvas"), {debug: true});
 	gl = glh.gl
+    /*gl.enable(GL_BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.disable(gl.DEPTH_TEST);*/
     vertexShader = glh.loadShaderDOM("vertexShader");
 	vertexShaderFullscreen = glh.loadShaderDOM("vertexShaderFullscreen")
     fragmentShader = glh.loadShaderDOM("fragmentShader");
@@ -126,19 +130,6 @@ function init() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 }
 
-function drawLine(mouse) {
-	if (!mouse.lastPos) return;
-	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-	gl.viewport(0, 0, screenSize, screenSize);
-	glh.gl.useProgram(shaderProgram);
-	glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
-	glh.gl.bufferSubData(glh.gl.ARRAY_BUFFER, 0, new Float32Array([mouse.lastPos.x, mouse.lastPos.y, mouse.pos.x, mouse.pos.y]));
-	glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
-	glh.gl.uniform2f(shaderProgram.uniforms.uResolution, screenSize, screenSize);
-	glh.gl.drawArrays(glh.gl.LINES, 0, vertexBuffer.numItems / 8);
-	needsPresent = true;
-}
-
 function rotate2D(coord, angle, target) {
 	var sinA = Math.sin(angle);
 	var cosA = Math.cos(angle);
@@ -154,48 +145,6 @@ function rotate2D(coord, angle, target) {
 	}
 }
 
-function drawStroke(mouse) {
-	if (!mouse.lastPos || !mouse.vel) return;
-	mouse.lastVel = mouse.lastVel || mouse.vel;
-	var curveSubdivisions = 12;
-	vertices = new Float32Array(2 * (2 * (curveSubdivisions + 1)));
-	var rotated = {};
-	var mouseSpeed = Math.sqrt(mouse.vel.x * mouse.vel.x + mouse.vel.y * mouse.vel.y);
-	var lastMouseSpeed = Math.sqrt(mouse.lastVel.x * mouse.lastVel.x + mouse.lastVel.y * mouse.lastVel.y);
-	width1 = Math.min(20 / mouseSpeed, 5);
-	width2 = Math.min(20 / lastMouseSpeed, 5);
-	velocityNormalized = {x: mouse.vel.x / mouseSpeed, y: mouse.vel.y / mouseSpeed};
-	offset1 = {x: width1 * velocityNormalized.y, y : -width1 * velocityNormalized.x};
-	offset2 = {x: -width2 * velocityNormalized.y, y : width2 * velocityNormalized.x};
-	var j = 0;
-	for (var i = 0; i <= curveSubdivisions; i++) {
-		var theta = Math.PI * i / curveSubdivisions;
-		rotate2D(offset1, theta, rotated);
-		vertices[j] = mouse.pos.x + rotated.x; j++;
-		vertices[j] = mouse.pos.y + rotated.y; j++;
-	}
-	for (var i = 0; i <= curveSubdivisions; i++) {
-		var theta = Math.PI * i / curveSubdivisions;
-		rotate2D(offset2, theta, rotated);
-		vertices[j] = mouse.lastPos.x + rotated.x; j++;
-		vertices[j] = mouse.lastPos.y + rotated.y; j++;
-	}
-	//console.log(vertices);
-
-	//vertices = new Float32Array([0,0,300,0,300,300,0,300]);
-	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-	gl.viewport(0, 0, screenSize, screenSize);
-	glh.gl.useProgram(shaderProgram);
-	glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
-	glh.gl.bufferData(glh.gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
-	glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
-	glh.gl.uniform2f(shaderProgram.uniforms.uResolution, screenSize, screenSize);
-	//glh.gl.uniform4f(shaderProgram.uniforms.uColor, Math.random(), Math.random(), Math.random(), 1.0);
-	glh.gl.uniform4f(shaderProgram.uniforms.uColor, 1,1,1, 1.0);
-	glh.gl.drawArrays(glh.gl.TRIANGLE_FAN, 0, vertices.length / 2);
-	needsPresent = true;
-}
-
 function drawPen(pen) {
 	if (!pen.lastPos || !pen.vel) return;
 	pen.lastVel = pen.lastVel || pen.vel;
@@ -203,9 +152,9 @@ function drawPen(pen) {
 	vertices = new Float32Array(2 * (2 * (curveSubdivisions + 1)));
 	var rotated = {};
 	var penSpeed = Math.sqrt(pen.vel.x * pen.vel.x + pen.vel.y * pen.vel.y);
-	width1 = pen.width * (pen.maxRadius - pen.minRadius) + pen.minRadius;
-	width2 = pen.lastWidth * (pen.maxRadius - pen.minRadius) + pen.minRadius;
-	velocityNormalized = {x: pen.vel.x / penSpeed, y: pen.vel.y / penSpeed};
+	width1 = 0.5 * (pen.width * (pen.maxRadius - pen.minRadius) + pen.minRadius);
+	width2 = 0.5 * (pen.lastWidth * (pen.maxRadius - pen.minRadius) + pen.minRadius);
+    velocityNormalized = {x: pen.vel.x / penSpeed, y: pen.vel.y / penSpeed};
 	offset1 = {x: width1 * velocityNormalized.y, y : -width1 * velocityNormalized.x};
 	offset2 = {x: -width2 * velocityNormalized.y, y : width2 * velocityNormalized.x};
 	var j = 0;
@@ -221,20 +170,34 @@ function drawPen(pen) {
 		vertices[j] = pen.lastPos.x + rotated.x; j++;
 		vertices[j] = pen.lastPos.y + rotated.y; j++;
 	}
-	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-	gl.viewport(0, 0, screenSize, screenSize);
-	glh.gl.useProgram(shaderProgram);
-	glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
+    if (!drawingSetup) {
+       glh.gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+	   gl.viewport(0, 0, screenSize, screenSize);
+	   glh.gl.bindBuffer(glh.gl.ARRAY_BUFFER, vertexBuffer);
+       glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
+	   glh.gl.useProgram(shaderProgram);
+       glh.gl.uniform2f(shaderProgram.uniforms.uResolution, screenSize, screenSize);
+   	   drawingSetup = true;
+    }
 	glh.gl.bufferData(glh.gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
-	glh.gl.vertexAttribPointer(shaderProgram.vertexAttribs.aPos, 2, glh.gl.FLOAT, false, 8, 0);
-	glh.gl.uniform2f(shaderProgram.uniforms.uResolution, screenSize, screenSize);
-	glh.gl.uniform4f(shaderProgram.uniforms.uColor, pen.color[0], pen.color[1], pen.color[2], pen.color[3], 1);
-    //glh.gl.uniform4f(shaderProgram.uniforms.uColor, Math.random(), Math.random(), Math.random(), 1.0);
+    if (pen.visualizeSegments) {
+        glh.gl.uniform4f(shaderProgram.uniforms.uColor, Math.random(), Math.random(), Math.random(), 1.0);
+    }
+    else {
+        if (pen.mode === "pen") {
+    	   glh.gl.uniform4f(shaderProgram.uniforms.uColor, pen.color[0], pen.color[1], pen.color[2], pen.color[3], 1);
+        }
+        else if (pen.mode === "eraser") {
+            glh.gl.uniform4f(shaderProgram.uniforms.uColor, 0,0,0,0);
+
+        }
+    }
     glh.gl.drawArrays(glh.gl.TRIANGLE_FAN, 0, vertices.length / 2);
 	needsPresent = true;
 }
 
 function present() {
+    drawingSetup = false;
 	glh.gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	gl.viewport(0, 0, canvas.width, canvas.height);
 	glh.gl.clear(glh.gl.COLOR_BUFFER_BIT)
@@ -257,6 +220,16 @@ function renderLoop() {
     window.requestAnimationFrame(renderLoop);
 }
 
+var penSettings = {
+    mode: "pen",
+    minRadius: 1,
+    maxRadius: 8,
+    color: [1,1,1],
+    randomColor: true,
+    eraserRadius: 20,
+    visualizeSegments: false,
+}
+
 pens = [];
 var Pen = function(event) {
     this.id = event.pointerId;
@@ -265,49 +238,67 @@ var Pen = function(event) {
 	this.lastPos = null;
 	this.width = 0;
     this.lastWidth = null;
-    this.inkLevel = 1;
-    this.leadIn = 0;
+    this.inkLevel = 0;
     this.lastTime = event.timeStamp;// || Date.now();
-	this.color = [0.5 * Math.random() + 0.5, 0.5 * Math.random() + 0.25, 0.5 * Math.random(), 1.0];
-	for (var i = 0; i < 10; i++) {
-		var i1 = parseInt(Math.random() * 3) % 3;
-		var i2 = parseInt(Math.random() * 3) % 3;
-		var temp = this.color[i2];
-		this.color[i2] = this.color[i1];
-		this.color[i1] = temp;
-	}
-    this.minRadius = 1;
-    this.maxRadius = 10;
+    if (penSettings.randomColor) {
+    this.color = [0.5 * Math.random() + 0.5, 0.5 * Math.random() + 0.25, 0.5 * Math.random(), 1.0];
+    	for (var i = 0; i < 10; i++) {
+    		var i1 = parseInt(Math.random() * 3) % 3;
+    		var i2 = parseInt(Math.random() * 3) % 3;
+    		var temp = this.color[i2];
+    		this.color[i2] = this.color[i1];
+    		this.color[i1] = temp;
+    	}
+    }
+    else this.color = penSettings.color;
+    this.mode = penSettings.mode;
+    if (this.mode === "pen") {
+        this.minRadius = penSettings.minRadius;
+        this.maxRadius = penSettings.maxRadius;
+    }
+    else if (this.mode === "eraser") {
+        this.minRadius = this.maxRadius = penSettings.eraserRadius;
+    }
+    this.visualizeSegments = penSettings.visualizeSegments;
+    this.inkDecay = penSettings.inkDecay;
+    this.inkRefill = penSettings.inkRefill;
 }
+
 Pen.prototype.move = function(event) {
     this.lastPos = this.pos;
     this.lastWidth = this.width;
     this.pos = {x: event.clientX, y: event.clientY};
     this.vel = {x: this.pos.x - this.lastPos.x, y: this.pos.y - this.lastPos.y};
     var dt = (event.timeStamp - this.lastTime);
-    console.log("Pen " + this.id + ": dt = " + dt + "ms");
+    //console.log("Pen " + this.id + ": dt = " + dt + "ms");
     if (isFirefox) dt /= 1000;
     this.lastTime = event.timeStamp;
-    this.inkLevel = Math.min(this.inkLevel + 0.005 * dt, 1);
-    this.inkLevel = this.inkLevel * Math.exp(-0.01 * Math.sqrt(this.vel.x * this.vel.x + this.vel.y * this.vel.y));
-    this.leadIn = Math.min(this.leadIn + 0.01 * dt, 1);
-    this.width = this.leadIn * this.inkLevel;
+    this.inkLevel = Math.min(this.inkLevel + dt / this.inkRefill, 1);
+    this.inkLevel = this.inkLevel * Math.exp(-1 * this.inkDecay * Math.sqrt(this.vel.x * this.vel.x + this.vel.y * this.vel.y));
+    this.width = this.inkLevel;
 }
 window.addEventListener("load", function() {
 	canvas = document.getElementById("canvas");
     mouseDisplay = document.getElementById("mouseDisplay");
 	eventDisplay = document.getElementById("eventDisplay");
+    toggle = document.getElementById("toggle");
+    controls = document.getElementById("controls");
     canvas.addEventListener('pointerdown', function(event) {
+        //event.preventDefault();
 		pens[event.pointerId] = new Pen(event);
+        if (document.getElementById("cycle").checked && penSettings.mode !== "eraser") cyclePalette();
     });
     canvas.addEventListener('pointerup', function(event) {
+        //event.preventDefault();
         delete pens[event.pointerId];
     });
     canvas.addEventListener('pointercancel', function(event) {
         delete pens[event.pointerId];
     });
     canvas.addEventListener('pointermove', function(event) {
+        //event.preventDefault();
 		var pen = pens[event.pointerId];
+        //console.log(event);
 		if (!pen) return;
 		/*pen.lastVel = pen.vel;
 		pen.lastPos = pen.pos;
@@ -333,24 +324,238 @@ window.addEventListener("load", function() {
 	init();
 	renderLoop();
 
+    var paletteDiv = document.getElementById("colors");
+
+    var paletteRadios = document.getElementById("colors").getElementsByClassName("colorradio");
+    for (var i = 0; i < paletteRadios.length; i++) {
+        var input = paletteRadios[i];
+        input.onchange = onColorRadioChange;
+    }
+    var paletteInputs = document.getElementById("colors").getElementsByClassName("colorinput");
+    for (var i = 0; i < paletteInputs.length; i++) {
+        var input = paletteInputs[i];
+        input.onchange = input.onpaste = input.onkeyup = onColorInputChange;
+        input.onchange();
+    }
+    document.getElementById("random").onchange = function() {
+        penSettings.randomColor = this.checked;
+        document.getElementById("colors").style.display = (this.checked) ? "none" : "";
+    }
+    document.getElementById("random").onchange();
+    document.getElementById("bgcolor").onchange = onBgColorInputChange;
+    document.getElementById("bgcolor").onpaste = onBgColorInputChange;
+    document.getElementById("bgcolor").onkeyup = onBgColorInputChange;
+    document.getElementById("bgcolor").onchange();
+    document.getElementById("penselect").onchange = onPenSelect;
+    document.getElementById("penselect").onchange();
+    document.getElementById("eraserselect").onchange = onEraserSelect;
+    document.getElementById("eraserselect").onchange();
+    var spinnerInputs = document.getElementsByClassName("spinner");
+    for (var i = 0; i < spinnerInputs.length; i++) {
+        var input = spinnerInputs[i];
+        input.onchange = input.onpaste = input.onkeyup = onRadiusChange;
+        input.onchange();
+    }
+    document.getElementById("visualize").onchange = onVisualizeChange;
+    document.getElementById("visualize").onchange();
+
 });
+
+function toggleControls() {
+    if (toggle.textContent.indexOf("[-]") === 0) {
+        toggle.textContent = "[+]";
+        controls.style.display = "none";
+    }
+    else {
+        toggle.textContent = "[-] Hide Controls";
+        controls.style.display = "";
+    }
+}
+
+function onColorRadioChange() {
+    if (this.checked) {
+        var color = parseCSSColorNormalized(this.nextElementSibling.value);
+        if (!color || (color[3] < 1)) {
+            return;
+        }
+        else {
+            penSettings.color = color;
+        }
+    }
+}
+
+function onColorInputChange() {
+    var color = parseCSSColorNormalized(this.value);
+    if (!color || (color[3] < 1)) {
+        this.style.color="red";
+        this.nextElementSibling.style.border = "2px solid red";
+    }
+    else {
+        this.style.color = "black";
+        this.nextElementSibling.style.backgroundColor = this.value;
+        this.nextElementSibling.style.border = "2px solid white";
+    }
+    this.previousElementSibling.onchange();
+}
+
+function cyclePalette() {
+    var paletteRadios = document.getElementById("colors").getElementsByClassName("colorradio");
+    for (var i = 0; i < paletteRadios.length; i++) {
+        var input = paletteRadios[i];
+        if (input.checked === true) {
+            if ((i + 1) < paletteRadios.length) {
+                paletteRadios[i+1].checked = true;
+                paletteRadios[i+1].onchange();
+            }
+            else {
+                paletteRadios[0].checked = true;
+                paletteRadios[0].onchange();
+            }
+            break;
+        }
+    }
+}
+
+function onBgColorInputChange() {
+    var color = parseCSSColorNormalized(this.value);
+    if (!color || (color[3] < 1)) {
+        this.style.color="red";
+        this.nextElementSibling.style.border = "2px solid red";
+    }
+    else {
+        this.style.color = "black";
+        this.nextElementSibling.style.backgroundColor = this.value;
+        this.nextElementSibling.style.border = "2px solid white";
+    }
+    document.body.style.backgroundColor = this.value;
+}
+
+
+function onPenSelect() {
+    if (this.checked) {
+        penSettings.mode = "pen";
+    }
+}
+function onEraserSelect() {
+    if (this.checked) {
+        penSettings.mode = "eraser";
+    }
+}
+function onRadiusChange() {
+    var value = parseFloat(this.value);
+    console.log(value);
+    if (value == NaN || value < 0) {
+        this.style.color="red";
+        return;
+    }
+    this.style.color = "black";
+    switch (this.id) {
+    case "minwidth":
+        penSettings.minRadius = value;
+        break;
+    case "maxwidth":
+        penSettings.maxRadius = value;
+        break;
+    case "eraserwidth":
+        penSettings.eraserRadius = value;
+        break;
+    case "inkdecay":
+        penSettings.inkDecay = value;
+        break;
+    case "inkrefill":
+        penSettings.inkRefill = value;
+        break;
+    default:
+        console.log("unknown input", this.id);
+    }
+}
+function onVisualizeChange() {
+    penSettings.visualizeSegments = this.checked;
+}
 
 </script>
 
+<style>
+/* unvisited link */
+a:link {
+    color: white;
+}
 
+/* visited link */
+a:visited {
+    color: white;
+}
+
+/* mouse over link */
+a:hover {
+    color: white;
+}
+
+/* selected link */
+a:active {
+    color: white;
+}
+.colordot {
+    width: 0.9em;
+    height: 0.9em;
+    border-radius: 50%;
+    background-color: white;
+    display: inline-block;
+    border: 2px solid white;
+}
+.spinner {
+    width: 4em;
+}
+</style>
 </head>
 
 
-<body style="margin: 0; overflow:hidden; width: 100%; height: 100%; background-color: black">
-    <div style="position: absolute; color: white;">
-        Amar Shah<br>
-        Interactive Computer Graphics with WebGL<br>
-        Assignment 2<br>
-        Drawing<br>
-		<div id="mouseDisplay" style="display: none">Mouse: {}</div>
-		<div id="eventDisplay"></div>
+<body style="margin: 0; overflow:hidden; background-color: black">
+    <div style="position: absolute; color: white; background: rgba(0,0,0,0.5)">
+        <div><a id="toggle" style="color:white" href="javascript:toggleControls()">[-] Hide Controls</a></div>
+        <div id="controls">
+            Amar Shah<br>
+            Interactive Computer Graphics with WebGL<br>
+            Assignment 2<br>
+            Drawing<br><br>
+            Colors:<br>
+
+            <div id="tools" style="border: 1px solid white; margin: 0.5em;">
+                <div style="margin-left:0.5em; font-weight:bold;">Tools</div>
+                <input type="radio" name="toolselect" id="penselect" checked>Pen<br></input>
+                <input type="radio" name="toolselect" id="eraserselect">Eraser<br></input>
+            </div>
+            <div id="palette" style="border: 1px solid white; margin: 0.5em;">
+                <div style="margin-left:0.5em; font-weight:bold;">Palette</div>
+                <input type="checkbox" id="random">Random<br></input>
+                <div id="colors">
+                    <input type="radio" checked class="colorradio" name="colorselect" style="color:red"><input class="colorinput" value="#ff0000"><div class="colordot"></div><br>
+                    <input type="radio" class="colorradio" name="colorselect"><input class="colorinput" value="#0f0"><div class="colordot"></div><br>
+                    <input type="radio" class="colorradio" name="colorselect"><input class="colorinput" value="blue"><div class="colordot"></div><br>
+                    <input type="radio" class="colorradio" name="colorselect"><input class="colorinput" value="rgb(255,255,0)"><div class="colordot"></div><br>
+                    <input type="checkbox" id="cycle" checked>Cycle<br></input>
+                </div>
+            </div>
+            <div id="penOptions" style="border: 1px solid white; margin: 0.5em;">
+                <div style="margin-left:0.5em; font-weight:bold;">Pen Options</div>
+                Minimum Width: <input type="number" class="spinner" min="0" value="1" id="minwidth"></input>px<br>
+                Maximum Width: <input type="number" class="spinner" min="0" value="8" id="maxwidth"></input>px<br>
+                Ink Decay: <input type="number" class="spinner" min="0" value="0.01" step="0.001" id="inkdecay"></input><br>
+                Ink Refill:  <input type="number" class="spinner" min="0" value="100" id="inkrefill"></input>ms<br>
+            </div>
+            <div id="eraserOptions" style="border: 1px solid white; margin: 0.5em;">
+                <div style="margin-left:0.5em; font-weight:bold;">Eraser Options</div>
+                Width: <input type="number" class="spinner" min="0" value="20" id="eraserwidth"></input>px<br>
+            </div>
+            <div id="miscOptions" style="border: 1px solid white; margin: 0.5em;">
+                <div style="margin-left:0.5em; font-weight:bold;">Miscellaneous Options</div>
+                Background Color: <input id="bgcolor" value="black"><div class="colordot"></div>
+                <br>
+                <input type="checkbox" id="visualize">Visualize Segments</input><br>
+            </div>
+        </div></div>
     </div>
-    <canvas touch-action="none" id="canvas" style="border: none;"></canvas><br>
+    <canvas touch-action="none" id="canvas" style="width: 100%; height: 100%;"></canvas><br>
 
 </body>
 </html>
