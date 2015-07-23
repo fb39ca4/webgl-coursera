@@ -137,7 +137,9 @@ function drawPen(pen) {
 	needsPresent = true;
 }
 
-
+function clearDrawing() {
+	glh.gl.clear(glh.gl.COLOR_BUFFER_BIT);
+}
 
 var penSettings = {
     mode: "pen",
@@ -260,6 +262,7 @@ window.addEventListener("load", function() {
     }
     document.getElementById("visualize").onchange = onVisualizeChange;
     document.getElementById("visualize").onchange();
+    document.getElementById("cleardrawing").onclick = clearDrawing;
 
 });
 
@@ -464,6 +467,7 @@ body {
                 Background Color: <input id="bgcolor" value="black"><div class="colordot"></div>
                 <br>
                 <input type="checkbox" id="visualize">Visualize Segments</input><br>
+                <button type="button" id="cleardrawing">Clear Drawing</input><br>
             </div>
         </div></div>
     </div>
