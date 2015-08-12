@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Assignment 3: Pseudo-CAD</title>
+<meta http-equiv="content-type" content="text/html; charset=utf8">
+<script type="text/javascript" src="../lib/requestanimationframe-polyfill.js"></script>
+<script type="text/javascript" src="../lib/glhelper.js"></script>
+<script type="text/javascript" src="../lib/gl-matrix.js"></script>
+<script type="text/javascript" src="../lib/webgl-debug.js"></script>
+<script type="text/javascript" src="../lib/pep.js"></script>
+<script type="text/javascript" src="../lib/inputhelper.js"></script>
+<script type="text/javascript" src="meshes.js"></script>
+<script type="text/javascript" src="engine.js"></script>
+<script type="text/javascript" src="gestures.js"></script>
+
+<script type="x-shader/x-vertex" id="flat-vertex">
+attribute vec4 aPos;
+uniform mat4 uTransform;
+uniform mat4 uCamera;
+uniform mat4 uModel;
+varying vec4 vColor;
+varying float w;
+
+void main() {
+    gl_Position = uCamera * uModel * aPos;
+}
+</script>
+
+<script type="x-shader/x-fragment" id="flat-fragment">
+precision mediump float;
+uniform vec4 uColor;
+
+void main() {
+    gl_FragColor = uColor;
+}
+</script>
+
+<script type="x-shader/x-vertex" id="colored-vertex">
+attribute vec4 aPos;
+attribute vec4 aColor;
+uniform mat4 uTransform;
+uniform mat4 uCamera;
+uniform mat4 uModel;
+varying vec4 vColor;
+varying float w;
+
+void main() {
+    vColor = aColor;
+    gl_Position = uCamera * uModel * vec4(aPos.xyz, 1);
+    w = gl_Position.w;
+}
+</script>
+
+<script type="x-shader/x-fragment" id="colored-fragment">
+precision mediump float;
+
+varying vec4 vColor;
+varying float w;
+
+void main() {
+    gl_FragColor = vec4(vColor.rgb, 1.0);
+    //gl_FragColor = vec4(vec3(w /50.), 1.0);
+}
+</script>
+
+<script type="x-shader/x-vertex" id="shaded-vertex">
+attribute vec4 aPos;
+attribute vec3 aNormal;
+uniform mat4 uTransform;
+uniform mat4 uCamera;
+uniform mat4 uModel;
+varying vec3 vNormal;
+void main() {
+    gl_Position = uCamera * uModel * aPos;
+    vNormal = normalize((uModel * vec4(aNormal, 0.)).xyz);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="shaded-fragment">
+precision mediump float;
+uniform vec4 uColor;
+varying vec3 vNormal;
+
+void main() {
+    gl_FragColor = vec4(mix(vNormal / 2. + 0.5, uColor.rgb, uColor.a), 1.0);
+}
+</script>
+
+<script type="text/javascript">
+function getUrlParams() {
+  var raw = window.location.search.substring(1).split("&");
+  var processed = {};
+  for (var i = 0; i < raw.length; i++) {
+    var name = raw[i].substring(0, raw[i].indexOf("="));
+    var arg = raw[i].substring(raw[i].indexOf("=") + 1);
+    if (name) processed[name.toLowerCase()] = arg;
+  }
+  return processed;
+}
+
+var canvas;
+var info;
+var gestures;
+var engine = new Engine();
+function init() {
+	canvas = document.getElementById("canvas");
+    controls = document.getElementById("controls");
+    toggle = document.getElementById("toggle");
+    engine.init(canvas, {debug:true});
+	window.addEventListener("resize", function() {
+		engine.setResolution(parseInt(window.innerWidth), parseInt(window.innerHeight));
+	})
+    engine.setResolution(parseInt(window.innerWidth), parseInt(window.innerHeight));
+    engine.queueRender();
+    engine.display = info;
+    engine.gestureController.display = info;
+
+    document.getElementsByClassName("tool")[0].checked = true;
+    //gestures = new Gestures(canvas, info);
+}
+
+function toggleControls() {
+    if (toggle.textContent.indexOf("[-]") === 0) {
+        toggle.textContent = "[+]";
+        controls.style.display = "none";
+    }
+    else {
+        toggle.textContent = "[-] Hide Controls";
+        controls.style.display = "";
+    }
+}
+
+</script>
+<style>
+body {
+    position:fixed !important;
+    position:absolute;
+    top:0;
+    right:0;
+    bottom:0;
+    left:0;
+    margin:0;
+    overflow: hidden;
+}
+.viewport {
+	/*width: 100%;
+	height: 100%;*/
+    cursor: crosshair;
+}
+#info {
+    /*font-family: monospace;*/
+}
+</style>
+</head>
+
+
+<body onload="init();">
+	<div id="info" style="position: absolute; color: white; background: rgba(0,0,0,0.5); overflow: auto; max-height: 100%">
+    <div><a id="toggle" style="color:white" onclick="toggleControls()" href="javascript:void(0)">[-] Hide Controls</a></div>
+
+    <div id="controls">
+        Amar Shah<br>
+        Interactive Computer Graphics with WebGL<br>
+        Assignment 3<br>
+        Pseudo-CAD<br><br></div>
+        <hr>
+        <b>Tools:</b><br>
+        <input type="radio" checked class="tool" name="toolselect" onchange="if(this.checked)engine.mode='select';">Select Objects<br>
+        <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='sphere';">Add Spheres<br>
+        <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='cone';">Add Cones<br>
+        <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='cylinder';">Add Cylinders<br>
+        <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='delete';">Delete Objects<br>
+    </div>
+
+    <canvas id="canvas" touch-action="none" class="viewport" style="background: black" width="256" height="256"></canvas><br>
+</body>
+</html>
