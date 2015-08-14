@@ -141,6 +141,7 @@ body {
     left:0;
     margin:0;
     overflow: hidden;
+    font-family: Times;
 }
 .viewport {
 	/*width: 100%;
@@ -149,6 +150,10 @@ body {
 }
 #info {
     /*font-family: monospace;*/
+}
+.help {
+    font-size: 75%;
+    margin-left: 2em;
 }
 </style>
 </head>
@@ -163,13 +168,23 @@ body {
         Interactive Computer Graphics with WebGL<br>
         Assignment 3<br>
         Pseudo-CAD<br><br></div>
-        <hr>
-        <b>Tools:</b><br>
+        <div style=font-weight:bold;font-size:150%>Tools:</div>
+        <div class="help">One finger/left mouse swipe to pan camera.<br>
+        Two finger/right mouse swipe to rotate camera.<br>
+        Two finger pinch/scrollwheel to move camera forwards and backwards<br></div>
         <input type="radio" checked class="tool" name="toolselect" onchange="if(this.checked)engine.mode='select';">Select Objects<br>
+        <div class="help">One finger/left mouse press and hold to select an object.<br>
+        One finger/left mouse swipe starting on selected to move object.<br>
+        Two finger/right mouse swipe starting on selected to rotate object.<br>
+        Two finger pinch/scrollwheel starting on selected to scale object.<br></div>
         <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='sphere';">Add Spheres<br>
         <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='cone';">Add Cones<br>
         <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='cylinder';">Add Cylinders<br>
+        <div class="help">One finger/left mouse press and hold to create new object.<br></div>
         <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='delete';">Delete Objects<br>
+        <div class="help">One finger/left mouse press and hold to delete object.<br></div>
+        <br>
+
     </div>
 
     <canvas id="canvas" touch-action="none" class="viewport" style="background: black" width="256" height="256"></canvas><br>
