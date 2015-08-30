@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Assignment 4: Lighting</title>
+<meta http-equiv="content-type" content="text/html; charset=utf8">
+<script type="text/javascript" src="../lib/requestanimationframe-polyfill.js"></script>
+<script type="text/javascript" src="../lib/glhelper.js"></script>
+<script type="text/javascript" src="../lib/gl-matrix.js"></script>
+<script type="text/javascript" src="../lib/webgl-debug.js"></script>
+<script type="text/javascript" src="../lib/pep.js"></script>
+<script type="text/javascript" src="../lib/inputhelper.js"></script>
+<script type="text/javascript" src="meshes.js"></script>
+<script type="text/javascript" src="engine.js"></script>
+<script type="text/javascript" src="gestures.js"></script>
+<script type="text/javascript" src="../lib/parsecsscolor.js"></script>
+
+<script type="x-shader/x-vertex" id="flat-vertex">
+attribute vec4 aPos;
+uniform mat4 uTransform;
+uniform mat4 uCamera;
+uniform mat4 uModel;
+varying vec4 vColor;
+varying float w;
+
+void main() {
+    gl_Position = uCamera * uModel * aPos;
+}
+</script>
+
+<script type="x-shader/x-fragment" id="flat-fragment">
+precision mediump float;
+uniform vec4 uColor;
+
+void main() {
+    gl_FragColor = uColor;
+}
+</script>
+
+<script type="x-shader/x-vertex" id="colored-vertex">
+attribute vec4 aPos;
+attribute vec4 aColor;
+uniform mat4 uTransform;
+uniform mat4 uCamera;
+uniform mat4 uModel;
+varying vec4 vColor;
+varying float w;
+
+void main() {
+    vColor = aColor;
+    gl_Position = uCamera * uModel * vec4(aPos.xyz, 1);
+    w = gl_Position.w;
+}
+</script>
+
+<script type="x-shader/x-fragment" id="colored-fragment">
+precision mediump float;
+
+varying vec4 vColor;
+varying float w;
+
+void main() {
+    gl_FragColor = vec4(vColor.rgb, 1.0);
+    //gl_FragColor = vec4(vec3(w /50.), 1.0);
+}
+</script>
+
+<script type="x-shader/x-vertex" id="shaded-vertex">
+attribute vec4 aPos;
+attribute vec3 aNormal;
+uniform mat4 uTransform;
+uniform mat4 uCamera;
+uniform mat4 uModel;
+varying vec3 vNormal;
+varying vec3 vPos;
+void main() {
+    vPos = (uModel * aPos).xyz;
+    gl_Position = uCamera * uModel * aPos;
+    vNormal = normalize((uModel * vec4(aNormal, 0.)).xyz);
+}
+</script>
+
+<script type="x-shader/x-fragment" id="shaded-fragment">
+precision mediump float;
+uniform vec4 uColor;
+varying vec3 vNormal;
+varying vec3 vPos;
+
+uniform vec3 uLight0Pos;
+uniform vec4 uLight0Color;
+uniform vec3 uLight1Pos;
+uniform vec4 uLight1Color;
+
+void main() {
+    vec3 materialColor = normalize(vNormal) / 2. + 0.5;
+    materialColor = materialColor / 4. + 0.75;
+    vec3 light0Offset = uLight0Pos - vPos;
+    vec3 light1Offset = uLight1Pos - vPos;
+    vec3 light0Value = uLight0Color.rgb * max(dot(normalize(light0Offset), normalize(vNormal)), 0.0) * uLight0Color.w / dot(light0Offset, light0Offset);
+    vec3 light1Value = uLight1Color.rgb * max(dot(normalize(light1Offset), normalize(vNormal)), 0.0) * uLight1Color.w / dot(light1Offset, light1Offset);
+    vec3 ambient = vec3(0.4);
+    gl_FragColor = vec4( pow(mix(materialColor * (ambient + light0Value + light1Value), uColor.rgb, uColor.a), vec3(2.2)) , 1.0);
+}
+</script>
+
+<script type="text/javascript">
+function getUrlParams() {
+  var raw = window.location.search.substring(1).split("&");
+  var processed = {};
+  for (var i = 0; i < raw.length; i++) {
+    var name = raw[i].substring(0, raw[i].indexOf("="));
+    var arg = raw[i].substring(raw[i].indexOf("=") + 1);
+    if (name) processed[name.toLowerCase()] = arg;
+  }
+  return processed;
+}
+
+var canvas;
+var info;
+var gestures;
+var engine = new Engine();
+function init() {
+	canvas = document.getElementById("canvas");
+    controls = document.getElementById("controls");
+    toggle = document.getElementById("toggle");
+    engine.init(canvas, {debug:true});
+	window.addEventListener("resize", function() {
+		engine.setResolution(parseInt(window.innerWidth), parseInt(window.innerHeight));
+	})
+    engine.setResolution(parseInt(window.innerWidth), parseInt(window.innerHeight));
+    engine.queueRender();
+    engine.display = info;
+    engine.gestureController.display = info;
+
+    document.getElementsByClassName("tool")[0].checked = true;
+    //gestures = new Gestures(canvas, info);
+    
+    var input = document.querySelector("#light0_color");
+    input.onchange = input.onpaste = input.onkeyup = setLightColor;
+    input.onchange();
+    var input = document.querySelector("#light1_color");
+    input.onchange = input.onpaste = input.onkeyup = setLightColor;
+    input.onchange();
+    
+    document.querySelector("#light0_enabled").onchange = setLightEnabled;
+    document.querySelector("#light0_enabled").onchange();
+    document.querySelector("#light1_enabled").onchange = setLightEnabled;
+    document.querySelector("#light1_enabled").onchange();
+    
+    document.querySelector("#light0_intensity").onchange = setLightIntensity;
+    document.querySelector("#light0_intensity").onchange();
+    document.querySelector("#light1_intensity").onchange = setLightIntensity;
+    document.querySelector("#light1_intensity").onchange();
+}
+
+function toggleControls() {
+    if (toggle.textContent.indexOf("[-]") === 0) {
+        toggle.textContent = "[+]";
+        controls.style.display = "none";
+    }
+    else {
+        toggle.textContent = "[-] Hide Controls";
+        controls.style.display = "";
+    }
+}
+
+function setLightColor() {
+    var color = parseCSSColorNormalized(this.value);
+    if (!color || (color[3] < 1)) {
+        this.style.color="red";
+        this.nextElementSibling.style.border = "2px solid red";
+    }
+    else {
+        this.style.color = "black";
+        this.nextElementSibling.style.backgroundColor = this.value;
+        this.nextElementSibling.style.border = "2px solid white";
+        var light = engine.lights[parseInt(this.parentElement.getAttribute("lightindex"))];
+        vec3.copy(light.color, color);
+    }
+}
+
+function setLightEnabled() {
+    var light = engine.lights[parseInt(this.parentElement.getAttribute("lightindex"))];
+    light.enabled = this.checked;
+}
+
+function setLightIntensity() {
+    var intensity = parseInt(this.value);
+    if (!isFinite(intensity)) return;
+    var light = engine.lights[parseInt(this.parentElement.getAttribute("lightindex"))];
+    light.intensity = intensity;
+}
+
+</script>
+<style>
+a:link {
+    color: white;
+}
+a:visited {
+    color: white;
+}
+a:hover {
+    color: white;
+}
+
+/* selected link */
+a:active {
+    color: white;
+}
+.colordot {
+    width: 0.9em;
+    height: 0.9em;
+    border-radius: 50%;
+    background-color: white;
+    display: inline-block;
+    border: 2px solid white;
+}
+.spinner {
+    width: 4em;
+}
+body {
+    position:fixed !important;
+    position:absolute;
+    top:0;
+    right:0;
+    bottom:0;
+    left:0;
+    margin:0;
+    overflow: hidden;
+    font-family: Times;
+}
+.viewport {
+	/*width: 100%;
+	height: 100%;*/
+    cursor: crosshair;
+}
+#info {
+    /*font-family: monospace;*/
+}
+.help {
+    font-size: 75%;
+    margin-left: 2em;
+}
+.group {
+  border: 1px solid white;
+  margin: 0.5em;
+}
+.grouptitle {
+  margin-left:0.5em;
+  font-weight:bold;
+}
+</style>
+</head>
+
+
+<body onload="init();">
+      <div id="info" style="position: absolute; color: white; background: rgba(0,0,0,0.5); overflow: auto; max-height: 100%; max-width: 480px">
+        <div><a id="toggle" style="color:white" onclick="toggleControls()" href="javascript:void(0)">[-] Hide Controls</a></div>
+
+        <div id="controls">
+            Amar Shah<br>
+            Interactive Computer Graphics with WebGL<br>
+            Assignment 3<br>
+            Pseudo-CAD<br><br>
+            <div class="group">
+                <div class="grouptitle">Tools:</div>
+                General:
+                <div class="help">One finger/left mouse swipe to pan camera.<br>
+                Two finger/right mouse swipe to rotate camera.<br>
+                Two finger pinch/scrollwheel to move camera forwards and backwards<br></div>
+                <input type="radio" checked class="tool" name="toolselect" onchange="if(this.checked)engine.mode='select';">Select Objects<br>
+                <div class="help">One finger/left mouse press and hold to select an object.<br>
+                One finger/left mouse swipe starting on selected to move object.<br>
+                Two finger/right mouse swipe starting on selected to rotate object.<br>
+                Two finger pinch/scrollwheel starting on selected to scale object.<br></div>
+                <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='sphere';">Add Spheres<br>
+                <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='cone';">Add Cones<br>
+                <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='cylinder';">Add Cylinders<br>
+                <div class="help">One finger/left mouse press and hold to create new object.<br></div>
+                <input type="radio" class="tool" name="toolselect" onchange="if(this.checked)engine.mode='delete';">Delete Objects<br>
+                <div class="help">One finger/left mouse press and hold to delete object.<br></div>
+            </div>
+            <div class="group">
+                <div class="grouptitle">Lighting</div>
+                <div class="group" lightindex="0">
+                    <div class="grouptitle">Light 1</div>
+                    Enabled: <input type="checkbox" id="light0_enabled" checked><br>
+                    Color: <input class="colorinput" value="#ff0000" id="light0_color"><div class="colordot"></div><br>
+                    <div class="help">Accepts any opaque CSS color.</div>
+                    Intensity: <input type="number" class="spinner" min="0" value="5" id="light0_intensity"><br>
+                    Position:
+                    <div class="help">Animate position using parametric functions of t, time in seconds. Can use sin, cos, tan, abs, and mod.</div>
+                    x=<input><br>
+                    y=<input><br>
+                    z=<input><br>
+                </div>
+                <div class="group" lightindex="1">
+                    <div class="grouptitle">Light 2</div>
+                    Enabled: <input type="checkbox" id="light1_enabled"><br>
+                    Color: <input class="colorinput" value="#ff0000" id="light1_color"><div class="colordot"></div><br>
+                    Intensity: <input type="number" class="spinner" min="0" value="5" id="light1_intensity"><br>
+                    Position<br>
+                    x=<input><br>
+                    y=<input><br>
+                    z=<input><br>
+                </div>
+            </div>
+        </div>
+    </div>
+
+  <canvas id="canvas" touch-action="none" class="viewport" style="background: black;" width="256" height="256"></canvas><br>
+</body>
+</html>
