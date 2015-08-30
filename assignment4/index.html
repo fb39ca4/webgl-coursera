@@ -150,6 +150,13 @@ function init() {
     document.querySelector("#light0_intensity").onchange();
     document.querySelector("#light1_intensity").onchange = setLightIntensity;
     document.querySelector("#light1_intensity").onchange();
+    
+    var inputs = document.getElementsByClassName("lightpos")
+    for (var i = 0; i < inputs.length; i++) {
+        var input = inputs[i];
+        input.onchange = input.onpaste = input.onkeyup = setLightPos;
+        input.onchange();
+    }
 }
 
 function toggleControls() {
@@ -188,6 +195,18 @@ function setLightIntensity() {
     if (!isFinite(intensity)) return;
     var light = engine.lights[parseInt(this.parentElement.getAttribute("lightindex"))];
     light.intensity = intensity;
+}
+
+function setLightPos() {
+    var expression = this.value;
+    if (typeof engine.evaluateParametric(expression) == "number") {
+        this.style.color = "black";
+        var light = engine.lights[parseInt(this.parentElement.getAttribute("lightindex"))];
+        light.pos[this.getAttribute("dimindex")] = expression;
+    }
+    else {
+        this.style.color = "red";
+    }
 }
 
 </script>
@@ -284,24 +303,24 @@ body {
                 <div class="group" lightindex="0">
                     <div class="grouptitle">Light 1</div>
                     Enabled: <input type="checkbox" id="light0_enabled" checked><br>
-                    Color: <input class="colorinput" value="#ff0000" id="light0_color"><div class="colordot"></div><br>
+                    Color: <input class="colorinput" value="khaki" id="light0_color"><div class="colordot"></div><br>
                     <div class="help">Accepts any opaque CSS color.</div>
                     Intensity: <input type="number" class="spinner" min="0" value="5" id="light0_intensity"><br>
                     Position:
                     <div class="help">Animate position using parametric functions of t, time in seconds. Can use sin, cos, tan, abs, and mod.</div>
-                    x=<input><br>
-                    y=<input><br>
-                    z=<input><br>
+                    x=<input class="lightpos" dimindex="0" value="5*sin(t)"><br>
+                    y=<input class="lightpos" dimindex="1" value="3*cos(t)"><br>
+                    z=<input class="lightpos" dimindex="2" value="0"><br>
                 </div>
                 <div class="group" lightindex="1">
                     <div class="grouptitle">Light 2</div>
                     Enabled: <input type="checkbox" id="light1_enabled"><br>
-                    Color: <input class="colorinput" value="#ff0000" id="light1_color"><div class="colordot"></div><br>
+                    Color: <input class="colorinput" value="aqua" id="light1_color"><div class="colordot"></div><br>
                     Intensity: <input type="number" class="spinner" min="0" value="5" id="light1_intensity"><br>
                     Position<br>
-                    x=<input><br>
-                    y=<input><br>
-                    z=<input><br>
+                    x=<input class="lightpos" dimindex="0" value="3"><br>
+                    y=<input class="lightpos" dimindex="1" value="0"><br>
+                    z=<input class="lightpos" dimindex="2" value="1+abs(sin(PI*t))"><br>
                 </div>
             </div>
         </div>

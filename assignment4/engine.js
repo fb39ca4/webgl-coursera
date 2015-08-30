@@ -106,9 +106,7 @@ Engine.prototype.init = function(canvas, options) {
     
     this.lights.push({
         enabled: true,
-        posX: "0",
-        posY: "5 * cos(t)",
-        posZ: "5 * sin(t)",
+        pos: ["0", "0", "0"],
         currentPos: vec3.create(),
         color: vec3.fromValues(1,1,1),
         intensity: 10,
@@ -116,9 +114,7 @@ Engine.prototype.init = function(canvas, options) {
     });
     this.lights.push({
         enabled: false,
-        posX: "0",
-        posY: "0",
-        posZ: "0",
+        pos: ["0", "0", "0"],
         currentPos: vec3.create(),
         color: vec3.fromValues(0,0,0),
         intensity: 1,
@@ -372,16 +368,21 @@ Engine.prototype.evaluateParametric = function(expression, t) {
     var cos = Math.cos;
     var tan = Math.tan;
     var pow = Math.pow;
-    var PI = Math.pi;
-    return eval(expression);
+    var max = Math.max;
+    var abs = Math.abs;
+    var PI = Math.PI;
+    try {
+        return eval(expression);
+    }
+    catch (e) { return false};
 }
 
 Engine.prototype.updateLightPos = function() {
     for (i in this.lights) {
         var light = this.lights[i];
-        light.currentPos[0] = this.evaluateParametric(light.posX, (Date.now() - light.timeOffset) / 1000);
-        light.currentPos[1] = this.evaluateParametric(light.posY, (Date.now() - light.timeOffset) / 1000);
-        light.currentPos[2] = this.evaluateParametric(light.posZ, (Date.now() - light.timeOffset) / 1000);
+        for (var j = 0; j < 3; j++) {
+            light.currentPos[j] = this.evaluateParametric(light.pos[j], (Date.now() - light.timeOffset) / 1000);
+        }
     }
 }
 
